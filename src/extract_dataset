@@ -1,1 +1,208 @@
+"""
+extract_dataset.py
 
+Author: Zivita Research Team
+
+Description:
+------------
+This script converts the NASA Battery Aging Dataset (.mat files)
+into a structured CSV file for machine learning applications.
+
+The script extracts information from every discharge cycle,
+computes battery State of Health (SOH), and saves useful battery
+parameters into a tabular dataset.
+
+Input:
+    NASA Battery Dataset (.mat files)
+
+Output:
+    data/processed/battery_dataset.csv
+
+Features Extracted:
+    - Battery ID
+    - Cycle Number
+    - Capacity (Ah)
+    - State of Health (SOH)
+    - Average Voltage
+    - Minimum Voltage
+    - Maximum Voltage
+    - Average Current
+    - Average Temperature
+    - Maximum Temperature
+    - Discharge Duration
+    - Electrolyte Resistance (Re)
+    - Charge Transfer Resistance (Rct)
+
+Usage:
+    python extract_dataset.py
+"""
+
+import os
+import numpy as np
+import pandas as pd
+from scipy.io import loadmat
+
+
+def main():
+
+    print("=" * 60)
+    print("Zivita Battery Dataset Extraction")
+    print("=" * 60)
+
+    rows = []
+
+    # Folder containing MATLAB battery files
+    dataset_folder = "."
+
+    # Process every MATLAB file
+    for file in sorted(os.listdir(dataset_folder)):
+
+        if not file.endswith(".mat"):
+            continue
+
+        battery_name = file.replace(".mat", "")
+
+        print(f"Processing {battery_name}")
+
+        try:
+            mat = loadmat(file)
+
+        except Exception as e:
+            print(f"Could not open {file}: {e}")
+            continue
+
+        battery = mat[battery_name]
+
+        cycles = battery[0, 0]["cycle"]
+
+        cycle_count = cycles.shape[1]
+
+        # Counts only discharge cycles
+        discharge_number = 0
+
+        # Latest impedance values
+        latest_re = np.nan
+        latest_rct = np.nan
+
+        for i in range(cycle_count):
+
+            cycle = cycles[0, i]
+
+            cycle_type = str(cycle["type"][0]).lower()
+
+            # ----------------------------------------------------
+            # Store latest impedance measurements
+            # ----------------------------------------------------
+            if "impedance" in cycle_type:
+
+                try:
+
+                    data = cycle["data"][0, 0]
+
+                    latest_re = np.real(data["Re"][0][0])
+
+                    latest_rct = np.real(data["Rct"][0][0])
+
+                except:
+                    pass
+
+            # ----------------------------------------------------
+            # Process discharge cycles
+            # ----------------------------------------------------
+            elif "discharge" in cycle_type:
+
+                discharge_number += 1
+
+                try:
+
+                    data = cycle["data"][0, 0]
+
+                    voltage = data["Voltage_measured"][0]
+
+                    current = data["Current_measured"][0]
+
+                    temperature = data["Temperature_measured"][0]
+
+                    time = data["Time"][0]
+
+                    capacity = float(data["Capacity"][0][0])
+
+                    # ------------------------------------------------
+                    # State of Health Calculation
+                    #
+                    # Rated Capacity = 2 Ah
+                    #
+                    # SOH = (Current Capacity / Rated Capacity) × 100
+                    # ------------------------------------------------
+                    soh = (capacity / 2.0) * 100
+
+                    rows.append({
+
+                        "Battery": battery_name,
+
+                        "Cycle": discharge_number,
+
+                        "Capacity_Ah": capacity,
+
+                        "SOH": soh,
+
+                        "AvgVoltage": np.mean(voltage),
+
+                        "MinVoltage": np.min(voltage),
+
+                        "MaxVoltage": np.max(voltage),
+
+                        "AvgCurrent": np.mean(current),
+
+                        "AvgTemp": np.mean(temperature),
+
+                        "MaxTemp": np.max(temperature),
+
+                        "Duration": np.max(time),
+
+                        "Re": latest_re,
+
+                        "Rct": latest_rct
+
+                    })
+
+                except Exception as e:
+
+                    print(
+                        f"Warning: {battery_name} "
+                        f"Discharge {discharge_number} skipped ({e})"
+                    )
+
+    # ------------------------------------------------------------
+    # Create DataFrame
+    # ------------------------------------------------------------
+    df = pd.DataFrame(rows)
+
+    # Create output folder if it doesn't exist
+    os.makedirs("../data/processed", exist_ok=True)
+
+    output_path = "../data/processed/battery_dataset.csv"
+
+    df.to_csv(output_path, index=False)
+
+    # ------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------
+    print("\nExtraction Complete")
+    print("-" * 60)
+
+    print(f"Total Discharge Cycles : {len(df)}")
+
+    print(f"Total Batteries         : {df['Battery'].nunique()}")
+
+    print(f"Output File             : {output_path}")
+
+    print("\nFirst Five Rows\n")
+
+    print(df.head())
+
+    print("\nDone.")
+
+
+if __name__ == "__main__":
+    main()
