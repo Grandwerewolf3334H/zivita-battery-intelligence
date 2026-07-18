@@ -1,0 +1,10 @@
+SOH MODEL RESULTS
+============================
+
+Model: Random Forest Regressor
+
+Training Samples: 2154
+Testing Samples: 539
+
+MAE: 0.8161
+R2 Score: 0.9683
